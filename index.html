@@ -365,7 +365,7 @@ const SB_KEY = 'sb_publishable_Pboq-8FUk5nJsCH7wuratQ_0_quVxSS';
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
 // ── CACHE (en memoria) ───────────────────────────────────────────────────────
-let _P = [], _C = [], _S = [], _K = [];
+let _P = [], _C = [], _S = [], _K = [], _A = [];
 
 // ── MAPPERS ──────────────────────────────────────────────────────────────────
 const toProduct  = r => ({ id:r.id, nombre:r.nombre, precioUnidad:+r.precio_unidad, precioTira:+r.precio_tira, costoUnidad:+r.costo_unidad, stock:r.stock });
@@ -376,23 +376,27 @@ const toSale     = r => ({ id:r.id, clienteId:r.cliente_id, clienteNombre:r.clie
 const fromSale   = s => ({ id:s.id, cliente_id:s.clienteId, cliente_nombre:s.clienteNombre, producto_id:s.productoId, producto_nombre:s.productoNombre, tipo:s.tipo, cantidad:s.cantidad, unidades:s.unidades, pago:s.pago, total:s.total, ganancia:s.ganancia, credito:s.credito, pagado:s.pagado, fecha_pago:s.fechaPago, fecha:s.fecha });
 const toKardex   = r => ({ id:r.id, productoId:r.producto_id, productoNombre:r.producto_nombre, tipo:r.tipo, cantidad:r.cantidad, motivo:r.motivo, fecha:r.fecha });
 const fromKardex = k => ({ id:k.id, producto_id:k.productoId, producto_nombre:k.productoNombre, tipo:k.tipo, cantidad:k.cantidad, motivo:k.motivo, fecha:k.fecha });
+const toAbono    = r => ({ id:r.id, clienteId:r.cliente_id, clienteNombre:r.cliente_nombre, monto:+r.monto, fecha:r.fecha });
+const fromAbono  = a => ({ id:a.id, cliente_id:a.clienteId, cliente_nombre:a.clienteNombre, monto:a.monto, fecha:a.fecha });
 
 // ── DB LAYER ─────────────────────────────────────────────────────────────────
 const DB = {
   get: k => k==='products'?_P : k==='clients'?_C : k==='sales'?_S : _K,
 
   async loadAll() {
-    const [p,c,s,k] = await Promise.all([
+    const [p,c,s,k,a] = await Promise.all([
       sb.from('products').select('*').order('created_at'),
       sb.from('clients').select('*').order('creado_en'),
       sb.from('sales').select('*').order('fecha',{ascending:false}).limit(2000),
-      sb.from('kardex').select('*').order('fecha',{ascending:false}).limit(200)
+      sb.from('kardex').select('*').order('fecha',{ascending:false}).limit(200),
+      sb.from('abonos').select('*').order('fecha',{ascending:false}).limit(2000)
     ]);
     if (p.error) throw new Error('Error cargando productos: ' + p.error.message);
     _P = (p.data||[]).map(toProduct);
     _C = (c.data||[]).map(toClient);
     _S = (s.data||[]).map(toSale);
     _K = (k.data||[]).map(toKardex);
+    _A = (a.data||[]).map(toAbono);
   },
 
   async saveProduct(p) {
@@ -443,6 +447,28 @@ const DB = {
       s.total = restante;
       const {error} = await sb.from('sales').update({total: restante}).eq('id',saleId);
       if (error) showToast('⚠️ Error registrando abono');
+    }
+  },
+
+  async addAbono(a) {
+    _A.unshift(a);
+    const {error} = await sb.from('abonos').insert(fromAbono(a));
+    if (error) console.error('Abono error:', error);
+  },
+
+  async deleteOldSales() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const old = _S.filter(s => s.pagado && new Date(s.fecha) < cutoff);
+    if (!old.length) return;
+    const ids = old.map(s=>s.id);
+    _S = _S.filter(s => !ids.includes(s.id));
+    await sb.from('sales').delete().in('id', ids);
+    const oldAbonos = _A.filter(a => new Date(a.fecha) < cutoff);
+    if (oldAbonos.length) {
+      const aIds = oldAbonos.map(a=>a.id);
+      _A = _A.filter(a => !aIds.includes(a.id));
+      await sb.from('abonos').delete().in('id', aIds);
     }
   }
 };
@@ -536,6 +562,7 @@ async function loadAppData() {
 
   try {
     await DB.loadAll();
+    await DB.deleteOldSales();
     await initSampleIfNeeded();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-wrap').style.display = '';
@@ -1112,17 +1139,35 @@ function renderClientDetail() {
       <div class="scard"><div class="sv" style="color:var(--ER)">${fmt(fiadoT)}</div><div class="sl">Fiado pendiente</div></div>
     </div>`;
 
-  const histHtml=!sorted.length
-    ?'<div class="empty"><div class="ei">🧾</div><p>Sin historial de compras</p></div>'
+  const abonos = _A.filter(a => a.clienteId === id);
+  const histItems = [
+    ...sorted.map(s=>({ fecha:s.fecha, tipo:'venta', data:s })),
+    ...abonos.map(a=>({ fecha:a.fecha, tipo:'abono', data:a }))
+  ].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+
+  const histHtml=!histItems.length
+    ?'<div class="empty"><div class="ei">🧾</div><p>Sin historial</p></div>'
     :'<div class="card"><div class="twrap"><table>'+
-    '<thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Pago</th><th style="text-align:right">Total</th></tr></thead><tbody>'+
-    sorted.map(s=>`<tr>
-      <td style="font-size:11px;white-space:nowrap">${fmtDT(s.fecha)}</td>
-      <td style="font-size:12px">${esc(s.productoNombre)}</td>
-      <td style="font-size:12px">${s.cantidad} ${s.tipo==='tira'?'tira':'ud.'}</td>
-      <td>${s.credito&&!s.pagado?'<span class="badge b-er">Fiado</span>':s.credito&&s.pagado?'<span class="badge b-ok">Cobrado</span>':`<span class="badge b-bl">${esc(s.pago)}</span>`}</td>
-      <td style="text-align:right;font-weight:800">${fmt(s.total)}</td>
-    </tr>`).join('')+'</tbody></table></div></div>';
+    '<thead><tr><th>Fecha</th><th>Detalle</th><th>Cant.</th><th>Estado</th><th style="text-align:right">Monto</th></tr></thead><tbody>'+
+    histItems.map(item=>{
+      if (item.tipo==='abono') {
+        const a = item.data;
+        return `<tr style="background:var(--OKb)">
+          <td style="font-size:11px;white-space:nowrap">${fmtDT(a.fecha)}</td>
+          <td style="font-size:12px;font-weight:700;color:var(--OK)" colspan="2">💰 Abonó</td>
+          <td><span class="badge b-ok">Abono</span></td>
+          <td style="text-align:right;font-weight:800;color:var(--OK)">${fmt(a.monto)}</td>
+        </tr>`;
+      }
+      const s = item.data;
+      return `<tr>
+        <td style="font-size:11px;white-space:nowrap">${fmtDT(s.fecha)}</td>
+        <td style="font-size:12px">${esc(s.productoNombre)}</td>
+        <td style="font-size:12px">${s.cantidad} ${s.tipo==='tira'?'tira':'ud.'}</td>
+        <td>${s.credito&&!s.pagado?'<span class="badge b-er">Fiado</span>':s.credito&&s.pagado?'<span class="badge b-ok">Cobrado</span>':`<span class="badge b-bl">${esc(s.pago)}</span>`}</td>
+        <td style="text-align:right;font-weight:800">${fmt(s.total)}</td>
+      </tr>`;
+    }).join('')+'</tbody></table></div></div>';
 
   document.getElementById('cl-body').innerHTML = statsHtml+fiadoHtml+'<div class="sh"><h2>Historial</h2></div>'+histHtml;
 }
@@ -1173,6 +1218,7 @@ async function confirmarAbonoTotal(clientId, totalOriginal) {
   if (monto <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
   if (monto > totalOriginal) { showToast('⚠️ El abono no puede ser mayor a la deuda'); return; }
   const nuevaDeuda = Math.max(0, totalOriginal - monto);
+  const c = _C.find(x=>x.id===clientId);
   closeModal();
   const pendientes = _S.filter(s => s.clienteId === clientId && s.credito && !s.pagado)
                        .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
@@ -1187,6 +1233,7 @@ async function confirmarAbonoTotal(clientId, totalOriginal) {
       porPagar = 0;
     }
   }
+  await DB.addAbono({id:genId(), clienteId:clientId, clienteNombre:c?.nombre||'', monto, fecha:new Date().toISOString()});
   if (nuevaDeuda === 0) {
     showToast(`✅ Deuda saldada completamente`);
   } else {
