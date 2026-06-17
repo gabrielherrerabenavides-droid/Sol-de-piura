@@ -1083,18 +1083,24 @@ function renderClientDetail() {
 
   let fiadoHtml='';
   if (fiado.length) {
+    const items = fiado.map(s=>`
+      <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--B);font-size:13px">
+        <span style="color:var(--T2)">${esc(s.productoNombre)} · ${s.cantidad} ${s.tipo==='tira'?'tira(s)':'ud.'} · ${fmtD(s.fecha)}</span>
+        <span style="font-weight:700">${fmt(s.total)}</span>
+      </div>`).join('');
     fiadoHtml=`<div class="card" style="border-color:var(--ER)">
-      <div class="card-title" style="color:var(--ER)">📝 Cuenta de Fiado — ${fmt(fiadoT)} pendiente</div>
-      ${fiado.map(s=>`<div class="fiado-row">
+      <div class="card-title" style="color:var(--ER)">📝 Cuenta de Fiado</div>
+      ${items}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:2px solid var(--ER)">
         <div>
-          <div style="font-weight:700;font-size:14px">${fmt(s.total)}</div>
-          <div style="font-size:12px;color:var(--T2)">${esc(s.productoNombre)} · ${s.cantidad} ${s.tipo==='tira'?'tira(s)':'ud.'} · ${fmtD(s.fecha)}</div>
+          <div style="font-size:11px;color:var(--T2);font-weight:700;letter-spacing:.5px">TOTAL PENDIENTE</div>
+          <div style="font-size:26px;font-weight:800;color:var(--ER)">${fmt(fiadoT)}</div>
         </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-ok btn-sm" onclick="cobrarFiado('${s.id}')">✓ Todo</button>
-          <button class="btn btn-p btn-sm" onclick="abonarFiado('${s.id}')">💰 Abono</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ok btn-sm" onclick="cobrarTodoFiado('${id}',${fiadoT})">✓ Cobrar todo</button>
+          <button class="btn btn-p btn-sm" onclick="abonarFiadoTotal('${id}',${fiadoT})">💰 Abono</button>
         </div>
-      </div>`).join('')}
+      </div>
     </div>`;
   }
 
@@ -1121,33 +1127,31 @@ function renderClientDetail() {
   document.getElementById('cl-body').innerHTML = statsHtml+fiadoHtml+'<div class="sh"><h2>Historial</h2></div>'+histHtml;
 }
 
-async function cobrarFiado(saleId) {
-  const sale = _S.find(s=>s.id===saleId);
-  const now  = new Date().toISOString();
-  await DB.cobrarFiado(saleId, now);
-  showToast(`✅ Deuda cobrada — <em>${fmt(sale?.total||0)}</em> de ${esc(sale?.clienteNombre||'')}`);
+async function cobrarTodoFiado(clientId, totalDeuda) {
+  const pendientes = _S.filter(s => s.clienteId === clientId && s.credito && !s.pagado);
+  const now = new Date().toISOString();
+  await Promise.all(pendientes.map(s => DB.cobrarFiado(s.id, now)));
+  showToast(`✅ Deuda cobrada — <em>${fmt(totalDeuda)}</em>`);
   renderClientDetail();
   renderFiadoAlert();
 }
 
-function abonarFiado(saleId) {
-  const sale = _S.find(s=>s.id===saleId);
-  if (!sale) return;
+function abonarFiadoTotal(clientId, totalDeuda) {
+  const c = _C.find(x=>x.id===clientId);
   openModal(`
     <div class="mhdr"><span class="mtitle">💰 Registrar Abono</span><button class="mclose" onclick="closeModal()">✕</button></div>
     <div style="text-align:center;margin-bottom:16px">
-      <div style="font-size:12px;color:var(--T2);margin-bottom:4px">Deuda actual de ${esc(sale.clienteNombre)}</div>
-      <div style="font-size:32px;font-weight:800;color:var(--ER)">${fmt(sale.total)}</div>
-      <div style="font-size:11px;color:var(--T2)">${esc(sale.productoNombre)} · ${fmtD(sale.fecha)}</div>
+      <div style="font-size:12px;color:var(--T2);margin-bottom:4px">Deuda total de ${esc(c?.nombre||'')}</div>
+      <div style="font-size:32px;font-weight:800;color:var(--ER)">${fmt(totalDeuda)}</div>
     </div>
     <div class="fg">
       <label class="fl">Monto abonado (S/)</label>
-      <input type="number" id="abono-monto" placeholder="0.00" step="0.50" min="0.50" max="${sale.total}" value="${sale.total}" oninput="previewAbono(${sale.total})">
+      <input type="number" id="abono-monto" placeholder="0.00" step="0.50" min="0.50" max="${totalDeuda}" value="${totalDeuda}" oninput="previewAbono(${totalDeuda})">
     </div>
     <div id="abono-preview" style="text-align:center;padding:10px;border-radius:10px;margin-bottom:14px;font-size:14px;font-weight:700"></div>
-    <button class="btn btn-p" onclick="confirmarAbono('${saleId}',${sale.total})">✅ Confirmar Abono</button>
+    <button class="btn btn-p" onclick="confirmarAbonoTotal('${clientId}',${totalDeuda})">✅ Confirmar Abono</button>
   `);
-  setTimeout(() => previewAbono(sale.total), 50);
+  setTimeout(() => previewAbono(totalDeuda), 50);
 }
 
 function previewAbono(totalOriginal) {
@@ -1164,19 +1168,29 @@ function previewAbono(totalOriginal) {
   }
 }
 
-async function confirmarAbono(saleId, totalOriginal) {
+async function confirmarAbonoTotal(clientId, totalOriginal) {
   const monto = parseFloat(document.getElementById('abono-monto')?.value)||0;
-  const sale  = _S.find(s=>s.id===saleId);
-  if (!sale) return;
   if (monto <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
   if (monto > totalOriginal) { showToast('⚠️ El abono no puede ser mayor a la deuda'); return; }
-  const restante = Math.max(0, totalOriginal - monto);
+  const nuevaDeuda = Math.max(0, totalOriginal - monto);
   closeModal();
-  await DB.abonarParcial(saleId, monto);
-  if (restante === 0) {
-    showToast(`✅ Deuda saldada — ${esc(sale.clienteNombre)}`);
+  const pendientes = _S.filter(s => s.clienteId === clientId && s.credito && !s.pagado)
+                       .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+  let porPagar = monto;
+  for (const sale of pendientes) {
+    if (porPagar <= 0) break;
+    if (porPagar >= sale.total) {
+      porPagar -= sale.total;
+      await DB.cobrarFiado(sale.id, new Date().toISOString());
+    } else {
+      await DB.abonarParcial(sale.id, porPagar);
+      porPagar = 0;
+    }
+  }
+  if (nuevaDeuda === 0) {
+    showToast(`✅ Deuda saldada completamente`);
   } else {
-    showToast(`💰 Abono de <em>${fmt(monto)}</em> registrado — queda <em>${fmt(restante)}</em> pendiente`);
+    showToast(`💰 Abono de <em>${fmt(monto)}</em> registrado — queda <em>${fmt(nuevaDeuda)}</em> pendiente`);
   }
   renderClientDetail();
   renderFiadoAlert();
