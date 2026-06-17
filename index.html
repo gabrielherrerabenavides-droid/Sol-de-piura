@@ -370,8 +370,8 @@ let _P = [], _C = [], _S = [], _K = [];
 // ── MAPPERS ──────────────────────────────────────────────────────────────────
 const toProduct  = r => ({ id:r.id, nombre:r.nombre, precioUnidad:+r.precio_unidad, precioTira:+r.precio_tira, costoUnidad:+r.costo_unidad, stock:r.stock });
 const fromProduct= p => ({ id:p.id, nombre:p.nombre, precio_unidad:p.precioUnidad, precio_tira:p.precioTira, costo_unidad:p.costoUnidad, stock:p.stock });
-const toClient   = r => ({ id:r.id, nombre:r.nombre, distrito:r.distrito, creadoEn:r.creado_en });
-const fromClient = c => ({ id:c.id, nombre:c.nombre, distrito:c.distrito, creado_en:c.creadoEn });
+const toClient   = r => ({ id:r.id, nombre:r.nombre, distrito:r.distrito, telefono:r.telefono||'', creadoEn:r.creado_en });
+const fromClient = c => ({ id:c.id, nombre:c.nombre, distrito:c.distrito, telefono:c.telefono||'', creado_en:c.creadoEn });
 const toSale     = r => ({ id:r.id, clienteId:r.cliente_id, clienteNombre:r.cliente_nombre, productoId:r.producto_id, productoNombre:r.producto_nombre, tipo:r.tipo, cantidad:r.cantidad, unidades:r.unidades, pago:r.pago, total:+r.total, ganancia:+r.ganancia, credito:r.credito, pagado:r.pagado, fechaPago:r.fecha_pago, fecha:r.fecha });
 const fromSale   = s => ({ id:s.id, cliente_id:s.clienteId, cliente_nombre:s.clienteNombre, producto_id:s.productoId, producto_nombre:s.productoNombre, tipo:s.tipo, cantidad:s.cantidad, unidades:s.unidades, pago:s.pago, total:s.total, ganancia:s.ganancia, credito:s.credito, pagado:s.pagado, fecha_pago:s.fechaPago, fecha:s.fecha });
 const toKardex   = r => ({ id:r.id, productoId:r.producto_id, productoNombre:r.producto_nombre, tipo:r.tipo, cantidad:r.cantidad, motivo:r.motivo, fecha:r.fecha });
@@ -1077,7 +1077,8 @@ function renderClientDetail() {
   document.getElementById('cl-header').innerHTML = `
     <button class="back-btn" onclick="openDistrict('${esc(c.distrito)}')">← Volver a ${esc(c.distrito)}</button>
     <div class="sh"><h2>${esc(c.nombre)}</h2><button class="btn btn-ghost btn-sm" onclick="openEditClientModal('${id}')">✏️ Editar</button></div>
-    <span class="badge b-p" style="margin-bottom:12px;display:inline-flex">📍 ${esc(c.distrito)}</span>
+    <span class="badge b-p" style="margin-bottom:6px;display:inline-flex">📍 ${esc(c.distrito)}</span>
+    ${c.telefono?`<div style="font-size:13px;color:var(--T2);margin-bottom:10px">📞 <a href="tel:${esc(c.telefono)}" style="color:var(--BL)">${esc(c.telefono)}</a></div>`:''}
   `;
 
   let fiadoHtml='';
@@ -1187,6 +1188,7 @@ function openAddClientModal(preDistrict) {
     <div class="mhdr"><span class="mtitle">👤 Nuevo Cliente</span><button class="mclose" onclick="closeModal()">✕</button></div>
     <div class="fg"><label class="fl">Nombre</label><input type="text" id="cl-name" placeholder="Ej: Tienda Rosita"></div>
     <div class="fg"><label class="fl">Distrito</label><select id="cl-dist">${opts}</select></div>
+    <div class="fg"><label class="fl">Teléfono (opcional)</label><input type="tel" id="cl-tel" placeholder="Ej: 987654321"></div>
     <button class="btn btn-p" onclick="saveClient()">✅ Guardar Cliente</button>
   `);
 }
@@ -1199,17 +1201,19 @@ function openEditClientModal(id) {
     <div class="mhdr"><span class="mtitle">✏️ Editar Cliente</span><button class="mclose" onclick="closeModal()">✕</button></div>
     <div class="fg"><label class="fl">Nombre</label><input type="text" id="cl-name" value="${esc(c.nombre)}"></div>
     <div class="fg"><label class="fl">Distrito</label><select id="cl-dist">${opts}</select></div>
+    <div class="fg"><label class="fl">Teléfono (opcional)</label><input type="tel" id="cl-tel" value="${esc(c.telefono||'')}"></div>
     <button class="btn btn-p" onclick="saveClient('${id}')">✅ Guardar Cambios</button>
   `);
 }
 
 async function saveClient(editId) {
-  const nombre=document.getElementById('cl-name').value.trim();
-  const dist  =document.getElementById('cl-dist').value;
+  const nombre  = document.getElementById('cl-name').value.trim();
+  const dist    = document.getElementById('cl-dist').value;
+  const telefono= document.getElementById('cl-tel')?.value.trim()||'';
   if (!nombre) { showToast('⚠️ Ingresa un nombre'); return; }
   const client = editId
-    ? {..._C.find(c=>c.id===editId),nombre,distrito:dist}
-    : {id:genId(),nombre,distrito:dist,creadoEn:new Date().toISOString()};
+    ? {..._C.find(c=>c.id===editId),nombre,distrito:dist,telefono}
+    : {id:genId(),nombre,distrito:dist,telefono,creadoEn:new Date().toISOString()};
   await DB.saveClient(client);
   closeModal(); showToast('✅ Cliente guardado'); populateSaleForm(); renderClientes();
 }
