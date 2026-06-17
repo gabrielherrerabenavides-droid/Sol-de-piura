@@ -473,12 +473,6 @@ const DB = {
   }
 };
 
-function getPendingDebt(clientId) {
-  const fiado   = _S.filter(s=>s.clienteId===clientId&&s.credito&&!s.pagado).reduce((s,x)=>s+x.total,0);
-  const abonado = _A.filter(a=>a.clienteId===clientId).reduce((s,a)=>s+a.monto,0);
-  return Math.max(0, fiado - abonado);
-}
-
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
 const DISTRITOS = [
   'Alto Selva Alegre','Arequipa','Bustamante y Rivero','Cayma',
@@ -796,8 +790,7 @@ function renderStockAlerts() {
 
 function renderFiadoAlert() {
   const pending = _S.filter(s=>s.credito&&!s.pagado);
-  const clientIds = [...new Set(pending.map(s=>s.clienteId).filter(Boolean))];
-  const total = clientIds.reduce((sum,cId)=>sum+getPendingDebt(cId),0);
+  const total = pending.reduce((a,s)=>a+s.total,0);
   const el = document.getElementById('fiado-alert');
   if (!pending.length) { el.innerHTML=''; return; }
   el.innerHTML = `<div class="alert a-er" style="cursor:pointer" onclick="showTab('clientes')">
@@ -993,7 +986,7 @@ function renderClientes() {
 
 function renderDistrictList() {
   _clNav = {view:'districts',distrito:null,clientId:null};
-  const pendFiado = _C.reduce((sum,c)=>sum+getPendingDebt(c.id),0);
+  const pendFiado = _S.filter(s=>s.credito&&!s.pagado).reduce((a,s)=>a+s.total,0);
 
   document.getElementById('cl-header').innerHTML = `
     <div class="sh"><h2>Clientes</h2><button class="btn btn-p btn-sm" onclick="openAddClientModal()">+ Nuevo</button></div>
@@ -1003,7 +996,7 @@ function renderDistrictList() {
   const distData = DISTRITOS.map(d=>{
     const dc=_C.filter(c=>c.distrito===d);
     const ds=_S.filter(s=>dc.some(c=>c.id===s.clienteId));
-    const fp=dc.reduce((sum,c)=>sum+getPendingDebt(c.id),0);
+    const fp=ds.filter(s=>s.credito&&!s.pagado).reduce((a,s)=>a+s.total,0);
     return {name:d,count:dc.length,rev:ds.reduce((a,s)=>a+s.total,0),prof:ds.reduce((a,s)=>a+s.ganancia,0),fiado:fp};
   });
 
@@ -1075,7 +1068,7 @@ function renderDistrictDetail() {
     :'<div class="card">'+clients.map(c=>{
       const cs  =allS.filter(s=>s.clienteId===c.id);
       const ct  =cs.reduce((a,s)=>a+s.total,0);
-      const cf  =getPendingDebt(c.id);
+      const cf  =cs.filter(s=>s.credito&&!s.pagado).reduce((a,s)=>a+s.total,0);
       const last=cs.length?fmtD(Math.max(...cs.map(s=>new Date(s.fecha)))):null;
       return `<div class="li">
         <div class="li-main" style="cursor:pointer" onclick="openClient('${c.id}')">
@@ -1115,8 +1108,6 @@ function renderClientDetail() {
     ${c.telefono?`<div style="font-size:13px;color:var(--T2);margin-bottom:10px">📞 <a href="tel:${esc(c.telefono)}" style="color:var(--BL)">${esc(c.telefono)}</a></div>`:''}
   `;
 
-  const abonadoTotal = _A.filter(a=>a.clienteId===id).reduce((s,a)=>s+a.monto,0);
-  const deudaReal    = getPendingDebt(id);
   let fiadoHtml='';
   if (fiado.length) {
     const items = fiado.map(s=>`
@@ -1124,22 +1115,17 @@ function renderClientDetail() {
         <span style="color:var(--T2)">${esc(s.productoNombre)} · ${s.cantidad} ${s.tipo==='tira'?'tira(s)':'ud.'} · ${fmtD(s.fecha)}</span>
         <span style="font-weight:700">${fmt(s.total)}</span>
       </div>`).join('');
-    const abonoLine = abonadoTotal>0?`
-      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:var(--OK)">
-        <span style="font-weight:700">💰 Total abonado</span>
-        <span style="font-weight:700">- ${fmt(abonadoTotal)}</span>
-      </div>`:'';
     fiadoHtml=`<div class="card" style="border-color:var(--ER)">
       <div class="card-title" style="color:var(--ER)">📝 Cuenta de Fiado</div>
-      ${items}${abonoLine}
+      ${items}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:2px solid var(--ER)">
         <div>
-          <div style="font-size:11px;color:var(--T2);font-weight:700;letter-spacing:.5px">DEUDA PENDIENTE</div>
-          <div style="font-size:26px;font-weight:800;color:var(--ER)">${fmt(deudaReal)}</div>
+          <div style="font-size:11px;color:var(--T2);font-weight:700;letter-spacing:.5px">TOTAL PENDIENTE</div>
+          <div style="font-size:26px;font-weight:800;color:var(--ER)">${fmt(fiadoT)}</div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-ok btn-sm" onclick="cobrarTodoFiado('${id}',${deudaReal})">✓ Cobrar todo</button>
-          <button class="btn btn-p btn-sm" onclick="abonarFiadoTotal('${id}',${deudaReal})">💰 Abono</button>
+          <button class="btn btn-ok btn-sm" onclick="cobrarTodoFiado('${id}',${fiadoT})">✓ Cobrar todo</button>
+          <button class="btn btn-p btn-sm" onclick="abonarFiadoTotal('${id}',${fiadoT})">💰 Abono</button>
         </div>
       </div>
     </div>`;
@@ -1150,7 +1136,7 @@ function renderClientDetail() {
       <div class="scard"><div class="sv">${fmt(rev)}</div><div class="sl">Total compras</div></div>
       <div class="scard"><div class="sv" style="color:var(--OK)">${fmt(prof)}</div><div class="sl">Ganancia total</div></div>
       <div class="scard"><div class="sv">${sales.length}</div><div class="sl">Nº de compras</div></div>
-      <div class="scard"><div class="sv" style="color:var(--ER)">${fmt(deudaReal)}</div><div class="sl">Fiado pendiente</div></div>
+      <div class="scard"><div class="sv" style="color:var(--ER)">${fmt(fiadoT)}</div><div class="sl">Fiado pendiente</div></div>
     </div>`;
 
   const abonos = _A.filter(a => a.clienteId === id);
@@ -1232,15 +1218,15 @@ async function confirmarAbonoTotal(clientId, totalOriginal) {
   if (monto <= 0) { showToast('⚠️ Ingresa un monto válido'); return; }
   if (monto > totalOriginal) { showToast('⚠️ El abono no puede ser mayor a la deuda'); return; }
   const c = _C.find(x=>x.id===clientId);
+  const restante = Math.max(0, totalOriginal - monto);
   closeModal();
   await DB.addAbono({id:genId(), clienteId:clientId, clienteNombre:c?.nombre||'', monto, fecha:new Date().toISOString()});
-  const deudaRestante = getPendingDebt(clientId);
-  if (deudaRestante <= 0) {
+  if (restante === 0) {
     const pendientes = _S.filter(s=>s.clienteId===clientId&&s.credito&&!s.pagado);
     await Promise.all(pendientes.map(s=>DB.cobrarFiado(s.id, new Date().toISOString())));
     showToast(`✅ Deuda saldada completamente`);
   } else {
-    showToast(`💰 Abono de <em>${fmt(monto)}</em> registrado — queda <em>${fmt(deudaRestante)}</em> pendiente`);
+    showToast(`💰 Abono de <em>${fmt(monto)}</em> registrado — queda <em>${fmt(restante)}</em> pendiente`);
   }
   renderClientDetail();
   renderFiadoAlert();
