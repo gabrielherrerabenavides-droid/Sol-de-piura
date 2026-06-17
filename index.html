@@ -194,6 +194,19 @@ tr:last-child td{border-bottom:none}
 .empty{text-align:center;padding:36px 20px;color:var(--T2)}
 .empty .ei{font-size:42px;margin-bottom:10px}
 .empty p{font-size:14px}
+
+/* ── CARRITO ────────────────────────────────────────────── */
+.cart-empty{text-align:center;padding:20px;color:var(--T2);font-size:14px}
+.cart-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--B)}
+.cart-item:last-child{border-bottom:none}
+.cart-item-info{flex:1;min-width:0}
+.cart-item-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cart-item-sub{font-size:12px;color:var(--T2);margin-top:2px}
+.cart-item-price{font-weight:800;font-size:15px;flex-shrink:0}
+.cart-item-del{background:var(--ERb);border:none;border-radius:8px;color:var(--ER);font-size:16px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.add-btn{background:var(--S2);border:2px dashed var(--P);border-radius:10px;color:var(--PD);font-size:14px;font-weight:700;cursor:pointer;padding:12px;width:100%;text-align:center;transition:all .15s;margin-top:10px}
+.add-btn:active{transform:scale(.98)}
+.add-form{background:var(--PL);border:1px solid var(--P);border-radius:12px;padding:14px;margin-top:10px}
 </style>
 </head>
 <body>
@@ -246,53 +259,83 @@ tr:last-child td{border-bottom:none}
       <h2>Registrar Venta</h2>
       <span id="today-lbl" style="font-size:12px;color:var(--T2)"></span>
     </div>
+    <!-- CLIENTE -->
     <div class="card">
-      <div class="fg" style="position:relative">
-        <label class="fl">Cliente (dejar vacío = pasante)</label>
+      <div class="card-title">👤 Cliente</div>
+      <div class="fg" style="position:relative;margin-bottom:0">
         <input type="text" id="s-search" placeholder="Buscar tienda o cliente..." oninput="onClientSearch()" autocomplete="off" onblur="setTimeout(hideSearch,200)">
         <div id="s-search-results" class="sr-dropdown" style="display:none"></div>
       </div>
-      <div id="new-client-wrap" style="display:none">
+      <div id="new-client-wrap" style="display:none;margin-top:10px">
         <div class="fg"><label class="fl">Nombre del nuevo cliente</label><input type="text" id="s-new-name" placeholder="Ej: Tienda Rosita"></div>
-        <div class="fg"><label class="fl">Distrito</label><select id="s-new-dist"></select></div>
+        <div class="fg" style="margin-bottom:0"><label class="fl">Distrito</label><select id="s-new-dist"></select></div>
       </div>
-      <div class="fg">
-        <label class="fl">Producto</label>
-        <select id="s-product" onchange="calcPreview()">
-          <option value="">— Seleccionar —</option>
-        </select>
+      <div id="client-badge" style="display:none;margin-top:10px;padding:10px 12px;background:var(--OKb);border-radius:10px;font-size:14px;font-weight:700;color:var(--OK)"></div>
+    </div>
+
+    <!-- CARRITO -->
+    <div class="card">
+      <div class="card-title">🛒 Carrito</div>
+      <div id="cart-items">
+        <div class="cart-empty">Agrega productos con el botón de abajo</div>
       </div>
-      <div class="fg">
-        <label class="fl">Tipo de venta</label>
-        <div class="type-btns">
-          <button class="type-btn active" id="type-tira" onclick="setTipo('tira')">🎯 Tiras (×6)</button>
-          <button class="type-btn" id="type-unidad" onclick="setTipo('unidad')">📦 Unidades</button>
+      <div id="cart-total-wrap" style="display:none">
+        <div style="border-top:2px solid var(--B);margin-top:8px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:11px;color:var(--T2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total</div>
+            <div style="font-size:26px;font-weight:900" id="cart-total">S/ 0.00</div>
+            <div style="font-size:13px;color:var(--OK);font-weight:700" id="cart-profit"></div>
+          </div>
+          <div id="cart-summary" style="font-size:12px;color:var(--T2);text-align:right;line-height:1.7"></div>
         </div>
       </div>
-      <div class="fg">
-        <label class="fl" id="qty-lbl">Cantidad de tiras</label>
-        <input type="number" id="s-qty" min="1" value="1" inputmode="numeric" oninput="calcPreview()">
-      </div>
-      <div class="fg">
-        <label class="fl">Forma de pago</label>
-        <div class="pay-btns" id="pay-btns">
-          <button class="pbtn active" id="pay-Efectivo" onclick="setPago('Efectivo')"><span class="pi">💵</span>Efectivo</button>
-          <button class="pbtn" id="pay-Yape" onclick="setPago('Yape')"><span class="pi">📱</span>Yape</button>
-          <button class="pbtn" id="pay-Plin" onclick="setPago('Plin')"><span class="pi">📱</span>Plin</button>
-          <button class="pbtn" id="pay-Transferencia" onclick="setPago('Transferencia')"><span class="pi">🏦</span>Transf.</button>
-          <button class="pbtn" id="pay-Fiado" onclick="setPago('Fiado')"><span class="pi">📝</span>Fiado</button>
+      <button class="add-btn" id="toggle-add-btn" onclick="toggleAddForm()">＋ Agregar producto</button>
+      <div class="add-form" id="add-form" style="display:none">
+        <div class="fg">
+          <label class="fl">Producto</label>
+          <select id="f-product" onchange="calcAddPreview()">
+            <option value="">— Seleccionar —</option>
+          </select>
         </div>
-      </div>
-      <div id="s-preview" style="display:none">
-        <div class="preview-box">
-          <div class="prev-row"><span style="color:var(--T2)">Unidades a descontar</span><strong id="prev-units">—</strong></div>
-          <div class="prev-row"><span style="color:var(--T2)">Total a cobrar</span><span class="prev-val" id="prev-total">—</span></div>
-          <div class="prev-row total"><span style="color:var(--T2)">Ganancia estimada</span><span class="prev-val" style="color:var(--OK)" id="prev-profit">—</span></div>
+        <div class="fg">
+          <label class="fl">Tipo</label>
+          <div class="type-btns">
+            <button class="type-btn active" id="f-tira" onclick="setFTipo('tira')">🎯 Tiras (×6)</button>
+            <button class="type-btn" id="f-unidad" onclick="setFTipo('unidad')">📦 Unidades</button>
+          </div>
         </div>
-        <div id="fiado-warn" style="display:none;margin-top:8px" class="alert a-er">📝 Se guardará como deuda — podrás cobrarla desde Clientes</div>
+        <div class="row" style="margin-bottom:12px">
+          <div class="fg">
+            <label class="fl" id="f-qty-lbl">Cantidad de tiras</label>
+            <input type="number" id="f-qty" min="1" value="1" inputmode="numeric" oninput="calcAddPreview()">
+          </div>
+          <div class="fg" style="display:flex;align-items:flex-end">
+            <div id="f-preview-mini" style="padding:12px;background:var(--S);border-radius:10px;font-weight:800;font-size:15px;min-width:80px;text-align:center;border:1px solid var(--B)">S/ —</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-p" style="flex:1" onclick="addToCart()">✅ Agregar</button>
+          <button class="btn btn-ghost btn-sm" style="flex:none;width:auto;padding:12px 16px" onclick="toggleAddForm()">✕</button>
+        </div>
       </div>
     </div>
-    <button class="btn btn-p" onclick="registerSale()" style="font-size:17px;padding:15px;margin-bottom:20px">✅ Registrar Venta</button>
+
+    <!-- PAGO -->
+    <div class="card" id="pay-card" style="display:none">
+      <div class="card-title">💳 Forma de pago</div>
+      <div class="pay-btns">
+        <button class="pbtn active" id="pay-Efectivo" onclick="setPago('Efectivo')"><span class="pi">💵</span>Efectivo</button>
+        <button class="pbtn" id="pay-Yape" onclick="setPago('Yape')"><span class="pi">📱</span>Yape</button>
+        <button class="pbtn" id="pay-Plin" onclick="setPago('Plin')"><span class="pi">📱</span>Plin</button>
+        <button class="pbtn" id="pay-Transferencia" onclick="setPago('Transferencia')"><span class="pi">🏦</span>Transf.</button>
+        <button class="pbtn" id="pay-Fiado" onclick="setPago('Fiado')"><span class="pi">📝</span>Fiado</button>
+      </div>
+      <div id="fiado-warn" style="display:none;margin-top:10px" class="alert a-er">📝 Se guardará como deuda — podrás cobrarla desde Clientes</div>
+    </div>
+
+    <div id="register-wrap" style="display:none;margin-bottom:20px">
+      <button class="btn btn-ok" onclick="registerSale()" style="font-size:17px;padding:15px">✅ Registrar Venta Completa</button>
+    </div>
     <div class="sh"><h2>Hoy</h2></div>
     <div class="sgrid" id="day-stats"></div>
     <div id="day-sales"></div>
@@ -502,7 +545,8 @@ async function initSampleIfNeeded() {
 }
 
 // ── STATE ────────────────────────────────────────────────────────────────────
-let _tipo = 'tira';
+let _cart = [];
+let _fTipo = 'tira';
 let _pago = 'Efectivo';
 let _clNav = { view:'districts', distrito:null, clientId:null };
 let _selectedClient = null;
@@ -639,11 +683,9 @@ function renderVender() {
 }
 
 function populateSaleForm() {
-  const ps = document.getElementById('s-product');
-  const saved = ps.value;
-  ps.innerHTML = '<option value="">— Seleccionar —</option>' +
-    _P.map(p=>`<option value="${p.id}"${p.id===saved?' selected':''}>${esc(p.nombre)} (stock: ${p.stock})</option>`).join('');
-
+  const fp = document.getElementById('f-product');
+  if (fp) fp.innerHTML = '<option value="">— Seleccionar —</option>' +
+    _P.map(p=>`<option value="${p.id}">${esc(p.nombre)} (stock: ${p.stock})</option>`).join('');
   document.getElementById('s-new-dist').innerHTML = DISTRITOS.map(d=>`<option value="${d}">${d}</option>`).join('');
   document.getElementById('new-client-wrap').style.display = 'none';
 }
@@ -653,6 +695,7 @@ function onClientSearch() {
   const res = document.getElementById('s-search-results');
   document.getElementById('new-client-wrap').style.display = 'none';
   _selectedClient = null;
+  updateClientBadge();
   if (!q) { res.style.display = 'none'; _searchMatches = []; return; }
   _searchMatches = _C.filter(c =>
     c.nombre.toLowerCase().includes(q.toLowerCase()) ||
@@ -673,6 +716,7 @@ function selectClient(idx) {
   document.getElementById('s-search').value = c.nombre;
   document.getElementById('s-search-results').style.display = 'none';
   document.getElementById('new-client-wrap').style.display = 'none';
+  updateClientBadge();
 }
 
 function selectNewClient() {
@@ -681,6 +725,18 @@ function selectNewClient() {
   document.getElementById('s-search-results').style.display = 'none';
   document.getElementById('s-new-name').value = q;
   document.getElementById('new-client-wrap').style.display = 'block';
+  updateClientBadge();
+}
+
+function updateClientBadge() {
+  const el = document.getElementById('client-badge');
+  if (!el) return;
+  if (_selectedClient) {
+    el.style.display = 'block';
+    el.textContent = `✓ ${_selectedClient.nombre} — ${_selectedClient.distrito}`;
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 function hideSearch() {
@@ -688,12 +744,12 @@ function hideSearch() {
   if (el) el.style.display = 'none';
 }
 
-function setTipo(t) {
-  _tipo = t;
-  document.getElementById('type-tira').classList.toggle('active', t==='tira');
-  document.getElementById('type-unidad').classList.toggle('active', t==='unidad');
-  document.getElementById('qty-lbl').textContent = t==='tira'?'Cantidad de tiras':'Cantidad de unidades';
-  calcPreview();
+function setFTipo(t) {
+  _fTipo = t;
+  document.getElementById('f-tira').classList.toggle('active', t==='tira');
+  document.getElementById('f-unidad').classList.toggle('active', t==='unidad');
+  document.getElementById('f-qty-lbl').textContent = t==='tira'?'Cantidad de tiras':'Cantidad de unidades';
+  calcAddPreview();
 }
 
 function setPago(p) {
@@ -705,79 +761,163 @@ function setPago(p) {
   if (warn) warn.style.display = p==='Fiado'?'block':'none';
 }
 
-function calcPreview() {
-  const pid = document.getElementById('s-product').value;
-  const qty = parseInt(document.getElementById('s-qty').value)||0;
+function toggleAddForm() {
+  const f = document.getElementById('add-form');
+  const open = f.style.display === 'block';
+  f.style.display = open ? 'none' : 'block';
+  document.getElementById('toggle-add-btn').textContent = open ? '＋ Agregar producto' : '✕ Cancelar';
+  if (!open) {
+    document.getElementById('f-qty').value = 1;
+    document.getElementById('f-product').value = '';
+    document.getElementById('f-preview-mini').textContent = 'S/ —';
+    document.getElementById('f-product').focus();
+  }
+}
+
+function calcAddPreview() {
+  const pid = document.getElementById('f-product').value;
+  const qty = parseInt(document.getElementById('f-qty').value)||0;
   const p = _P.find(x=>x.id===pid);
-  const box = document.getElementById('s-preview');
-  if (!p||qty<=0) { box.style.display='none'; return; }
-  const units  = _tipo==='tira'?qty*6:qty;
-  const total  = _tipo==='tira'?p.precioTira*qty:p.precioUnidad*qty;
-  const profit = total - p.costoUnidad*units;
-  document.getElementById('prev-units').textContent  = units+' uds';
-  document.getElementById('prev-total').textContent  = fmt(total);
-  document.getElementById('prev-profit').textContent = fmt(profit);
-  box.style.display = 'block';
-  const warn = document.getElementById('fiado-warn');
-  if (warn) warn.style.display = _pago==='Fiado'?'block':'none';
+  const el = document.getElementById('f-preview-mini');
+  if (!p||qty<=0) { el.textContent='S/ —'; el.style.color=''; return; }
+  const total = _fTipo==='tira' ? p.precioTira*qty : p.precioUnidad*qty;
+  el.textContent = fmt(total);
+  el.style.color = 'var(--PD)';
+}
+
+function addToCart() {
+  const pid = document.getElementById('f-product').value;
+  const qty = parseInt(document.getElementById('f-qty').value)||0;
+  if (!pid) { showToast('⚠️ Selecciona un producto'); return; }
+  if (qty<=0) { showToast('⚠️ Ingresa una cantidad'); return; }
+  const p = _P.find(x=>x.id===pid);
+  if (!p) return;
+  const units    = _fTipo==='tira' ? qty*6 : qty;
+  const subtotal = _fTipo==='tira' ? p.precioTira*qty : p.precioUnidad*qty;
+  const ganancia = subtotal - p.costoUnidad*units;
+
+  const existing = _cart.find(i=>i.productoId===pid && i.tipo===_fTipo);
+  if (existing) {
+    existing.cantidad  += qty;
+    existing.unidades  += units;
+    existing.subtotal  += subtotal;
+    existing.ganancia  += ganancia;
+  } else {
+    _cart.push({ _id:genId(), productoId:pid, productoNombre:p.nombre, tipo:_fTipo, cantidad:qty, unidades:units, subtotal, ganancia });
+  }
+
+  document.getElementById('f-product').value = '';
+  document.getElementById('f-qty').value = 1;
+  document.getElementById('f-preview-mini').textContent = 'S/ —';
+  document.getElementById('add-form').style.display = 'none';
+  document.getElementById('toggle-add-btn').textContent = '＋ Agregar producto';
+  renderCartUI();
+  showToast(`🛒 ${esc(p.nombre)} agregado`);
+}
+
+function removeFromCart(id) {
+  _cart = _cart.filter(i=>i._id!==id);
+  renderCartUI();
+}
+
+function renderCartUI() {
+  const el      = document.getElementById('cart-items');
+  const payCard = document.getElementById('pay-card');
+  const regWrap = document.getElementById('register-wrap');
+  const totWrap = document.getElementById('cart-total-wrap');
+
+  if (!_cart.length) {
+    el.innerHTML = '<div class="cart-empty">Agrega productos con el botón de abajo</div>';
+    totWrap.style.display='none'; payCard.style.display='none'; regWrap.style.display='none';
+    return;
+  }
+
+  el.innerHTML = _cart.map(item=>`
+    <div class="cart-item">
+      <div class="cart-item-info">
+        <div class="cart-item-name">${esc(item.productoNombre)}</div>
+        <div class="cart-item-sub">${item.cantidad} ${item.tipo==='tira'?'tira(s)':'ud.'} · ${item.unidades} unidades</div>
+      </div>
+      <div class="cart-item-price">${fmt(item.subtotal)}</div>
+      <button class="cart-item-del" onclick="removeFromCart('${item._id}')">🗑</button>
+    </div>`).join('');
+
+  const total    = _cart.reduce((a,i)=>a+i.subtotal,0);
+  const ganancia = _cart.reduce((a,i)=>a+i.ganancia,0);
+  const tiras    = _cart.filter(i=>i.tipo==='tira').reduce((a,i)=>a+i.cantidad,0);
+  const uds      = _cart.filter(i=>i.tipo==='unidad').reduce((a,i)=>a+i.cantidad,0);
+
+  document.getElementById('cart-total').textContent = fmt(total);
+  document.getElementById('cart-profit').textContent = 'Ganancia: '+fmt(ganancia);
+  let sum=[];
+  if (tiras) sum.push(tiras+' tira(s)');
+  if (uds)   sum.push(uds+' ud.');
+  sum.push(_cart.length+' producto'+ (_cart.length!==1?'s':''));
+  document.getElementById('cart-summary').innerHTML = sum.join('<br>');
+
+  totWrap.style.display='block'; payCard.style.display='block'; regWrap.style.display='block';
 }
 
 async function registerSale() {
+  if (!_cart.length) { showToast('⚠️ El carrito está vacío'); return; }
+
   const newName = document.getElementById('s-new-name')?.value.trim()||'';
   const newDist = document.getElementById('s-new-dist')?.value||'Otro';
-  const pid     = document.getElementById('s-product').value;
-  const qty      = parseInt(document.getElementById('s-qty').value)||0;
-
-  if (!pid)    { showToast('⚠️ Selecciona un producto'); return; }
-  if (qty<=0)  { showToast('⚠️ Ingresa una cantidad válida'); return; }
-
-  const p = _P.find(x=>x.id===pid);
-  if (!p) return;
-
-  const units = _tipo==='tira'?qty*6:qty;
-  if (units>p.stock) { showToast(`⚠️ Stock insuficiente — disponible: ${p.stock} uds`); return; }
-
-  const total  = _tipo==='tira'?p.precioTira*qty:p.precioUnidad*qty;
-  const profit = total - p.costoUnidad*units;
 
   let finalClientId=null, clienteNombre='Sin cliente';
   if (_selectedClient) {
     finalClientId = _selectedClient.id;
     clienteNombre = _selectedClient.nombre;
   } else if (newName) {
-    const nc = {id:genId(),nombre:newName,distrito:newDist,creadoEn:new Date().toISOString()};
+    const nc = {id:genId(),nombre:newName,distrito:newDist,telefono:'',creadoEn:new Date().toISOString()};
     await DB.saveClient(nc);
     finalClientId=nc.id; clienteNombre=newName;
   }
 
   const now = new Date().toISOString();
-  const sale = {
-    id:genId(), clienteId:finalClientId, clienteNombre,
-    productoId:pid, productoNombre:p.nombre,
-    tipo:_tipo, cantidad:qty, unidades:units,
-    pago:_pago, total, ganancia:profit, fecha:now,
-    credito:_pago==='Fiado', pagado:_pago!=='Fiado', fechaPago:_pago!=='Fiado'?now:null
-  };
+  const ops = [];
 
-  p.stock -= units;
+  for (const item of _cart) {
+    const p = _P.find(x=>x.id===item.productoId);
+    if (!p) continue;
+    if (item.unidades > p.stock) {
+      showToast(`⚠️ Stock insuficiente: ${esc(p.nombre)} — disponible: ${p.stock} uds`);
+      return;
+    }
+    p.stock -= item.unidades;
+    const sale = {
+      id:genId(), clienteId:finalClientId, clienteNombre,
+      productoId:p.id, productoNombre:p.nombre,
+      tipo:item.tipo, cantidad:item.cantidad, unidades:item.unidades,
+      pago:_pago, total:item.subtotal, ganancia:item.ganancia, fecha:now,
+      credito:_pago==='Fiado', pagado:_pago!=='Fiado', fechaPago:_pago!=='Fiado'?now:null
+    };
+    ops.push(DB.saveProduct(p));
+    ops.push(DB.addSale(sale));
+    ops.push(DB.addKardex({id:genId(),productoId:p.id,productoNombre:p.nombre,tipo:'OUT',cantidad:item.unidades,motivo:'Venta a '+clienteNombre,fecha:now}));
+  }
 
-  await Promise.all([
-    DB.saveProduct(p),
-    DB.addSale(sale),
-    DB.addKardex({id:genId(),productoId:pid,productoNombre:p.nombre,tipo:'OUT',cantidad:units,motivo:'Venta a '+clienteNombre,fecha:now})
-  ]);
+  await Promise.all(ops);
 
-  document.getElementById('s-product').value = '';
-  document.getElementById('s-qty').value = 1;
-  document.getElementById('s-preview').style.display = 'none';
+  const totalVenta   = _cart.reduce((a,i)=>a+i.subtotal,0);
+  const totalGanancia= _cart.reduce((a,i)=>a+i.ganancia,0);
+  const pagoUsado    = _pago;
+
+  // Reset
+  _cart = [];
+  _selectedClient = null;
+  _pago = 'Efectivo';
   document.getElementById('s-search').value = '';
   document.getElementById('s-search-results').style.display = 'none';
   document.getElementById('new-client-wrap').style.display = 'none';
-  _selectedClient = null;
+  document.getElementById('client-badge').style.display = 'none';
+  document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('active','active-fiado'));
+  const ef = document.getElementById('pay-Efectivo');
+  if (ef) ef.classList.add('active');
 
-  const msg = _pago==='Fiado'
-    ? `📝 Venta al fiado — <em>${fmt(total)}</em> pendiente a ${esc(clienteNombre)}`
-    : `✅ Venta registrada — <em>${fmt(total)}</em> · Ganancia: <em>${fmt(profit)}</em>`;
+  const msg = pagoUsado==='Fiado'
+    ? `📝 Venta al fiado — <em>${fmt(totalVenta)}</em> pendiente a ${esc(clienteNombre)}`
+    : `✅ Venta registrada — <em>${fmt(totalVenta)}</em> · Ganancia: <em>${fmt(totalGanancia)}</em>`;
   showToast(msg, 4000);
   renderVender();
 }
