@@ -334,7 +334,7 @@ tr:last-child td{border-bottom:none}
     </div>
 
     <div id="register-wrap" style="display:none;margin-bottom:20px">
-      <button class="btn btn-ok" onclick="registerSale()" style="font-size:17px;padding:15px">✅ Registrar Venta Completa</button>
+      <button id="reg-btn" class="btn btn-ok" onclick="registerSale()" style="font-size:17px;padding:15px">✅ Registrar Venta Completa</button>
     </div>
     <div class="sh"><h2>Hoy</h2></div>
     <div class="sgrid" id="day-stats"></div>
@@ -461,6 +461,12 @@ const DB = {
     if (error) showToast('⚠️ Error guardando cliente');
   },
 
+  async deleteClient(id) {
+    _C = _C.filter(c=>c.id!==id);
+    const {error} = await sb.from('clients').delete().eq('id',id);
+    if (error) showToast('⚠️ Error eliminando cliente');
+  },
+
   async addSale(sale) {
     _S.unshift(sale);
     const {error} = await sb.from('sales').insert(fromSale(sale));
@@ -547,6 +553,7 @@ async function initSampleIfNeeded() {
 // ── STATE ────────────────────────────────────────────────────────────────────
 let _cart = [];
 let _fTipo = 'tira';
+let _registering = false;
 let _pago = 'Efectivo';
 let _clNav = { view:'districts', distrito:null, clientId:null };
 let _selectedClient = null;
@@ -859,67 +866,75 @@ function renderCartUI() {
 }
 
 async function registerSale() {
+  if (_registering) return;
   if (!_cart.length) { showToast('⚠️ El carrito está vacío'); return; }
+  _registering = true;
+  const regBtn = document.getElementById('reg-btn');
+  if (regBtn) { regBtn.disabled = true; regBtn.textContent = '⏳ Registrando...'; }
 
-  const newName = document.getElementById('s-new-name')?.value.trim()||'';
-  const newDist = document.getElementById('s-new-dist')?.value||'Otro';
+  try {
+    const newName = document.getElementById('s-new-name')?.value.trim()||'';
+    const newDist = document.getElementById('s-new-dist')?.value||'Otro';
 
-  let finalClientId=null, clienteNombre='Sin cliente';
-  if (_selectedClient) {
-    finalClientId = _selectedClient.id;
-    clienteNombre = _selectedClient.nombre;
-  } else if (newName) {
-    const nc = {id:genId(),nombre:newName,distrito:newDist,telefono:'',creadoEn:new Date().toISOString()};
-    await DB.saveClient(nc);
-    finalClientId=nc.id; clienteNombre=newName;
-  }
-
-  const now = new Date().toISOString();
-  const ops = [];
-
-  for (const item of _cart) {
-    const p = _P.find(x=>x.id===item.productoId);
-    if (!p) continue;
-    if (item.unidades > p.stock) {
-      showToast(`⚠️ Stock insuficiente: ${esc(p.nombre)} — disponible: ${p.stock} uds`);
-      return;
+    let finalClientId=null, clienteNombre='Sin cliente';
+    if (_selectedClient) {
+      finalClientId = _selectedClient.id;
+      clienteNombre = _selectedClient.nombre;
+    } else if (newName) {
+      const nc = {id:genId(),nombre:newName,distrito:newDist,telefono:'',creadoEn:new Date().toISOString()};
+      await DB.saveClient(nc);
+      finalClientId=nc.id; clienteNombre=newName;
     }
-    p.stock -= item.unidades;
-    const sale = {
-      id:genId(), clienteId:finalClientId, clienteNombre,
-      productoId:p.id, productoNombre:p.nombre,
-      tipo:item.tipo, cantidad:item.cantidad, unidades:item.unidades,
-      pago:_pago, total:item.subtotal, ganancia:item.ganancia, fecha:now,
-      credito:_pago==='Fiado', pagado:_pago!=='Fiado', fechaPago:_pago!=='Fiado'?now:null
-    };
-    ops.push(DB.saveProduct(p));
-    ops.push(DB.addSale(sale));
-    ops.push(DB.addKardex({id:genId(),productoId:p.id,productoNombre:p.nombre,tipo:'OUT',cantidad:item.unidades,motivo:'Venta a '+clienteNombre,fecha:now}));
+
+    const now = new Date().toISOString();
+    const ops = [];
+
+    for (const item of _cart) {
+      const p = _P.find(x=>x.id===item.productoId);
+      if (!p) continue;
+      if (item.unidades > p.stock) {
+        showToast(`⚠️ Stock insuficiente: ${esc(p.nombre)} — disponible: ${p.stock} uds`);
+        return;
+      }
+      p.stock -= item.unidades;
+      const sale = {
+        id:genId(), clienteId:finalClientId, clienteNombre,
+        productoId:p.id, productoNombre:p.nombre,
+        tipo:item.tipo, cantidad:item.cantidad, unidades:item.unidades,
+        pago:_pago, total:item.subtotal, ganancia:item.ganancia, fecha:now,
+        credito:_pago==='Fiado', pagado:_pago!=='Fiado', fechaPago:_pago!=='Fiado'?now:null
+      };
+      ops.push(DB.saveProduct(p));
+      ops.push(DB.addSale(sale));
+      ops.push(DB.addKardex({id:genId(),productoId:p.id,productoNombre:p.nombre,tipo:'OUT',cantidad:item.unidades,motivo:'Venta a '+clienteNombre,fecha:now}));
+    }
+
+    await Promise.all(ops);
+
+    const totalVenta   = _cart.reduce((a,i)=>a+i.subtotal,0);
+    const totalGanancia= _cart.reduce((a,i)=>a+i.ganancia,0);
+    const pagoUsado    = _pago;
+
+    _cart = [];
+    _selectedClient = null;
+    _pago = 'Efectivo';
+    document.getElementById('s-search').value = '';
+    document.getElementById('s-search-results').style.display = 'none';
+    document.getElementById('new-client-wrap').style.display = 'none';
+    document.getElementById('client-badge').style.display = 'none';
+    document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('active','active-fiado'));
+    const ef = document.getElementById('pay-Efectivo');
+    if (ef) ef.classList.add('active');
+
+    const msg = pagoUsado==='Fiado'
+      ? `📝 Venta al fiado — <em>${fmt(totalVenta)}</em> pendiente a ${esc(clienteNombre)}`
+      : `✅ Venta registrada — <em>${fmt(totalVenta)}</em> · Ganancia: <em>${fmt(totalGanancia)}</em>`;
+    showToast(msg, 4000);
+    renderVender();
+  } finally {
+    _registering = false;
+    if (regBtn) { regBtn.disabled = false; regBtn.textContent = '✅ Registrar Venta Completa'; }
   }
-
-  await Promise.all(ops);
-
-  const totalVenta   = _cart.reduce((a,i)=>a+i.subtotal,0);
-  const totalGanancia= _cart.reduce((a,i)=>a+i.ganancia,0);
-  const pagoUsado    = _pago;
-
-  // Reset
-  _cart = [];
-  _selectedClient = null;
-  _pago = 'Efectivo';
-  document.getElementById('s-search').value = '';
-  document.getElementById('s-search-results').style.display = 'none';
-  document.getElementById('new-client-wrap').style.display = 'none';
-  document.getElementById('client-badge').style.display = 'none';
-  document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('active','active-fiado'));
-  const ef = document.getElementById('pay-Efectivo');
-  if (ef) ef.classList.add('active');
-
-  const msg = pagoUsado==='Fiado'
-    ? `📝 Venta al fiado — <em>${fmt(totalVenta)}</em> pendiente a ${esc(clienteNombre)}`
-    : `✅ Venta registrada — <em>${fmt(totalVenta)}</em> · Ganancia: <em>${fmt(totalGanancia)}</em>`;
-  showToast(msg, 4000);
-  renderVender();
 }
 
 function renderStockAlerts() {
@@ -1387,13 +1402,27 @@ function openEditClientModal(id) {
   const c = _C.find(x=>x.id===id);
   if (!c) return;
   const opts = DISTRITOS.map(d=>`<option value="${d}"${c.distrito===d?' selected':''}>${d}</option>`).join('');
+  const salesCount = _S.filter(s=>s.clienteId===id).length;
+  const delBtn = salesCount === 0
+    ? `<button class="btn btn-er" style="margin-top:8px" onclick="deleteClientConfirm('${id}')">🗑 Eliminar Cliente</button>`
+    : '';
   openModal(`
     <div class="mhdr"><span class="mtitle">✏️ Editar Cliente</span><button class="mclose" onclick="closeModal()">✕</button></div>
     <div class="fg"><label class="fl">Nombre</label><input type="text" id="cl-name" value="${esc(c.nombre)}"></div>
     <div class="fg"><label class="fl">Distrito</label><select id="cl-dist">${opts}</select></div>
     <div class="fg"><label class="fl">Teléfono (opcional)</label><input type="tel" id="cl-tel" value="${esc(c.telefono||'')}"></div>
     <button class="btn btn-p" onclick="saveClient('${id}')">✅ Guardar Cambios</button>
+    ${delBtn}
   `);
+}
+
+async function deleteClientConfirm(id) {
+  const c = _C.find(x=>x.id===id);
+  if (!c) return;
+  closeModal();
+  await DB.deleteClient(id);
+  showToast('✅ Cliente eliminado');
+  renderClientes();
 }
 
 async function saveClient(editId) {
