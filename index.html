@@ -736,17 +736,19 @@ function closeModal() { document.getElementById('mroot').innerHTML=''; }
 function overlayClose(e) { if(e.target.classList.contains('overlay')) closeModal(); }
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
-const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const fmt  = n => 'S/ '+Number(n).toFixed(2);
-const fmtD = iso => new Date(iso).toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'});
-const fmtDT= iso => new Date(iso).toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit'})+' '+new Date(iso).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+const esc     = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmt     = n => 'S/ '+Number(n).toFixed(2);
+const TZ      = 'America/Lima';
+const localDay= (d=new Date()) => d.toLocaleDateString('en-CA',{timeZone:TZ});
+const fmtD    = iso => new Date(iso).toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:TZ});
+const fmtDT   = iso => new Date(iso).toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',timeZone:TZ})+' '+new Date(iso).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',timeZone:TZ});
 const genId= () => '_'+Math.random().toString(36).substr(2,9)+Date.now();
 
 // ── MODULE 1: VENDER ─────────────────────────────────────────────────────────
 function renderVender() {
   const today = new Date();
   document.getElementById('today-lbl').textContent =
-    today.toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long'});
+    today.toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',timeZone:TZ});
   populateSaleForm();
   renderStockAlerts();
   renderFiadoAlert();
@@ -1042,8 +1044,8 @@ function renderFiadoAlert() {
 }
 
 function renderDaySummary() {
-  const today = new Date().toISOString().split('T')[0];
-  const sales = _S.filter(s=>s.fecha.startsWith(today));
+  const today = localDay();
+  const sales = _S.filter(s=>localDay(new Date(s.fecha))===today);
   const contado = sales.filter(s=>!s.credito);
   const fiado   = sales.filter(s=>s.credito);
   const rev   = contado.reduce((a,s)=>a+s.total,0);
@@ -1391,7 +1393,7 @@ function renderClientDetail() {
   // Agrupar por día (fecha local)
   const groupedDays = {};
   histItems.forEach(item => {
-    const day = new Date(item.fecha).toLocaleDateString('en-CA');
+    const day = localDay(new Date(item.fecha));
     if (!groupedDays[day]) groupedDays[day] = [];
     groupedDays[day].push(item);
   });
@@ -1503,7 +1505,7 @@ async function confirmarAbonoTotal(clientId, totalOriginal) {
 }
 
 function editDayPago(clientId, day) {
-  const daySales = _S.filter(s=>s.clienteId===clientId && new Date(s.fecha).toLocaleDateString('en-CA')===day);
+  const daySales = _S.filter(s=>s.clienteId===clientId && localDay(new Date(s.fecha))===day);
   if (!daySales.length) return;
   const pagoActual = daySales[0].pago;
   const dayFmt = new Date(day+'T12:00:00').toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'});
@@ -1523,7 +1525,7 @@ function editDayPago(clientId, day) {
 
 async function confirmEditDayPago(clientId, day, nuevoPago) {
   closeModal();
-  const daySales = _S.filter(s=>s.clienteId===clientId && new Date(s.fecha).toLocaleDateString('en-CA')===day);
+  const daySales = _S.filter(s=>s.clienteId===clientId && localDay(new Date(s.fecha))===day);
   await Promise.all(daySales.map(s=>DB.updateSalePago(s.id, nuevoPago)));
   showToast(`✅ Método de pago actualizado a <em>${nuevoPago}</em>`);
   renderClientDetail();
@@ -1652,7 +1654,7 @@ function setRepPeriod(p, btn) {
   if (btn) btn.classList.add('active');
   document.getElementById('rep-custom').style.display = p==='custom'?'block':'none';
   document.getElementById('rep-daily').style.display  = p==='daily'?'block':'none';
-  if (p==='daily') document.getElementById('r-day').value=new Date().toISOString().split('T')[0];
+  if (p==='daily') document.getElementById('r-day').value=localDay();
   if (p!=='custom') renderReportes();
 }
 
@@ -1664,10 +1666,10 @@ function applyRange() {
 }
 
 function getRepRange() {
-  const now=new Date(), td=now.toISOString().split('T')[0];
+  const now=new Date(), td=localDay();
   if (_repPeriod==='today')  return {from:td,to:td};
-  if (_repPeriod==='week')   { const sw=new Date(now); sw.setDate(now.getDate()-now.getDay()); return {from:sw.toISOString().split('T')[0],to:td}; }
-  if (_repPeriod==='month')  { const sm=new Date(now.getFullYear(),now.getMonth(),1); return {from:sm.toISOString().split('T')[0],to:td}; }
+  if (_repPeriod==='week')   { const sw=new Date(now); sw.setDate(now.getDate()-now.getDay()); return {from:localDay(sw),to:td}; }
+  if (_repPeriod==='month')  { const sm=new Date(now.getFullYear(),now.getMonth(),1); return {from:localDay(sm),to:td}; }
   if (_repPeriod==='custom') return {from:_repFrom,to:_repTo};
   if (_repPeriod==='daily')  { const d=document.getElementById('r-day')?.value||td; return {from:d,to:d}; }
   return {from:td,to:td};
@@ -1676,7 +1678,7 @@ function getRepRange() {
 function renderReportes() {
   if (_repPeriod==='custom'&&(!_repFrom||!_repTo)) return;
   const {from,to}=getRepRange();
-  const sales=_S.filter(s=>{const d=s.fecha.split('T')[0];return d>=from&&d<=to;});
+  const sales=_S.filter(s=>{const d=localDay(new Date(s.fecha));return d>=from&&d<=to;});
   const el=document.getElementById('rep-content');
 
   if (!sales.length) {
@@ -1780,9 +1782,8 @@ function renderReportes() {
 async function guardarResumen() {
   if (!GS_URL) { showToast('⚠️ URL de Google Sheets no configurada'); return; }
 
-  const today    = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  const sales    = _S.filter(s => s.fecha.startsWith(todayStr));
+  const todayStr = localDay();
+  const sales    = _S.filter(s => localDay(new Date(s.fecha)) === todayStr);
 
   if (!sales.length) { showToast('⚠️ Sin ventas hoy para guardar'); return; }
 
