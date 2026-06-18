@@ -479,6 +479,19 @@ const DB = {
     if (error) console.error('Kardex error:',error);
   },
 
+  async updateSalePago(saleId, pago) {
+    const s = _S.find(x=>x.id===saleId);
+    if (!s) return;
+    s.pago    = pago;
+    s.credito = pago === 'Fiado';
+    s.pagado  = pago !== 'Fiado';
+    s.fechaPago = pago !== 'Fiado' ? new Date().toISOString() : null;
+    const {error} = await sb.from('sales').update({
+      pago, credito:s.credito, pagado:s.pagado, fecha_pago:s.fechaPago
+    }).eq('id', saleId);
+    if (error) showToast('⚠️ Error actualizando método de pago');
+  },
+
   async cobrarFiado(saleId, fechaPago) {
     const s = _S.find(x=>x.id===saleId);
     if (s) { s.pagado=true; s.fechaPago=fechaPago; }
@@ -1339,11 +1352,12 @@ function renderClientDetail() {
         </tr>`;
       }
       const s = item.data;
+      const badge = s.credito&&!s.pagado?'<span class="badge b-er">Fiado</span>':s.credito&&s.pagado?'<span class="badge b-ok">Cobrado</span>':`<span class="badge b-bl">${esc(s.pago)}</span>`;
       return `<tr>
         <td style="font-size:11px;white-space:nowrap">${fmtDT(s.fecha)}</td>
         <td style="font-size:12px">${esc(s.productoNombre)}</td>
         <td style="font-size:12px">${s.cantidad} ${s.tipo==='tira'?'tira':'ud.'}</td>
-        <td>${s.credito&&!s.pagado?'<span class="badge b-er">Fiado</span>':s.credito&&s.pagado?'<span class="badge b-ok">Cobrado</span>':`<span class="badge b-bl">${esc(s.pago)}</span>`}</td>
+        <td style="white-space:nowrap">${badge} <button onclick="editSalePago('${s.id}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;opacity:.6" title="Editar método de pago">✏️</button></td>
         <td style="text-align:right;font-weight:800">${fmt(s.total)}</td>
       </tr>`;
     }).join('')+'</tbody></table></div></div>';
@@ -1407,6 +1421,32 @@ async function confirmarAbonoTotal(clientId, totalOriginal) {
   } else {
     showToast(`💰 Abono de <em>${fmt(monto)}</em> registrado — queda <em>${fmt(restante)}</em> pendiente`);
   }
+  renderClientDetail();
+  renderFiadoAlert();
+}
+
+function editSalePago(saleId) {
+  const s = _S.find(x=>x.id===saleId);
+  if (!s) return;
+  const pagoActual = s.pago;
+  const pagos = ['Efectivo','Yape','Plin','Transferencia','Fiado'];
+  const btns = pagos.map(p=>`
+    <button class="btn ${p===pagoActual?'btn-p':'btn-ghost'}" style="margin-bottom:8px"
+      onclick="confirmEditSalePago('${saleId}','${p}')">
+      ${p===pagoActual?'✓ ':''} ${p}
+    </button>`).join('');
+  openModal(`
+    <div class="mhdr"><span class="mtitle">✏️ Editar método de pago</span><button class="mclose" onclick="closeModal()">✕</button></div>
+    <div style="font-size:12px;color:var(--T2);margin-bottom:12px">${esc(s.productoNombre)} · ${fmtD(s.fecha)} · <strong>${fmt(s.total)}</strong></div>
+    <div class="fg"><label class="fl">Método actual: <strong>${pagoActual}</strong></label></div>
+    ${btns}
+  `);
+}
+
+async function confirmEditSalePago(saleId, nuevoPago) {
+  closeModal();
+  await DB.updateSalePago(saleId, nuevoPago);
+  showToast(`✅ Método de pago actualizado a <em>${nuevoPago}</em>`);
   renderClientDetail();
   renderFiadoAlert();
 }
