@@ -293,7 +293,7 @@ tr:last-child td{border-bottom:none}
       <div class="add-form" id="add-form" style="display:none">
         <div class="fg">
           <label class="fl">Producto</label>
-          <select id="f-product" onchange="calcAddPreview()">
+          <select id="f-product" onchange="onProductChange()">
             <option value="">— Seleccionar —</option>
           </select>
         </div>
@@ -751,6 +751,27 @@ function hideSearch() {
   if (el) el.style.display = 'none';
 }
 
+function isUnitOnly(nombre) {
+  return /220g|240g/i.test(nombre||'');
+}
+
+function onProductChange() {
+  const pid = document.getElementById('f-product').value;
+  const p = _P.find(x=>x.id===pid);
+  const tirBtn = document.getElementById('f-tira');
+  if (p && isUnitOnly(p.nombre)) {
+    tirBtn.disabled = true;
+    tirBtn.style.opacity = '0.35';
+    tirBtn.style.cursor = 'not-allowed';
+    setFTipo('unidad');
+  } else {
+    tirBtn.disabled = false;
+    tirBtn.style.opacity = '';
+    tirBtn.style.cursor = '';
+  }
+  calcAddPreview();
+}
+
 function setFTipo(t) {
   _fTipo = t;
   document.getElementById('f-tira').classList.toggle('active', t==='tira');
@@ -777,6 +798,9 @@ function toggleAddForm() {
     document.getElementById('f-qty').value = 1;
     document.getElementById('f-product').value = '';
     document.getElementById('f-preview-mini').textContent = 'S/ —';
+    const tirBtn = document.getElementById('f-tira');
+    tirBtn.disabled = false; tirBtn.style.opacity = ''; tirBtn.style.cursor = '';
+    setFTipo('tira');
     document.getElementById('f-product').focus();
   }
 }
