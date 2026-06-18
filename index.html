@@ -482,13 +482,30 @@ const DB = {
   async updateSaleItems(saleId, tipo, cantidad) {
     const s = _S.find(x=>x.id===saleId);
     if (!s) return;
-    const p = _P.find(x=>x.id===s.productoId);
-    const unidades = tipo==='tira' ? cantidad*6 : cantidad;
-    const total    = p ? (tipo==='tira' ? p.precioTira*cantidad : p.precioUnidad*cantidad) : s.total;
-    const ganancia = p ? total - p.costoUnidad*unidades : s.ganancia;
-    s.tipo=tipo; s.cantidad=cantidad; s.unidades=unidades; s.total=total; s.ganancia=ganancia;
-    const {error} = await sb.from('sales').update({tipo,cantidad,unidades,total,ganancia}).eq('id',saleId);
-    if (error) showToast('⚠️ Error actualizando venta');
+    const p          = _P.find(x=>x.id===s.productoId);
+    const oldUnidades= s.unidades;
+    const newUnidades= tipo==='tira' ? cantidad*6 : cantidad;
+    const total      = p ? (tipo==='tira' ? p.precioTira*cantidad : p.precioUnidad*cantidad) : s.total;
+    const ganancia   = p ? total - p.costoUnidad*newUnidades : s.ganancia;
+
+    s.tipo=tipo; s.cantidad=cantidad; s.unidades=newUnidades; s.total=total; s.ganancia=ganancia;
+
+    const ops = [sb.from('sales').update({tipo,cantidad,unidades:newUnidades,total,ganancia}).eq('id',saleId)];
+
+    if (p && newUnidades !== oldUnidades) {
+      const diff = newUnidades - oldUnidades;
+      p.stock -= diff;
+      const kEntry = {id:genId(), productoId:p.id, productoNombre:p.nombre,
+        tipo: diff>0 ? 'OUT' : 'IN', cantidad:Math.abs(diff),
+        motivo: `Ajuste por edición de venta (${diff>0?'+'+diff:diff} ud.)`,
+        fecha: new Date().toISOString()};
+      _K.unshift(kEntry);
+      ops.push(sb.from('products').upsert(fromProduct(p)));
+      ops.push(sb.from('kardex').insert(fromKardex(kEntry)));
+    }
+
+    const res = await Promise.all(ops);
+    if (res[0].error) showToast('⚠️ Error actualizando venta');
   },
 
   async updateSalePago(saleId, pago) {
