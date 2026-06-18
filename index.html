@@ -479,6 +479,18 @@ const DB = {
     if (error) console.error('Kardex error:',error);
   },
 
+  async updateSaleItems(saleId, tipo, cantidad) {
+    const s = _S.find(x=>x.id===saleId);
+    if (!s) return;
+    const p = _P.find(x=>x.id===s.productoId);
+    const unidades = tipo==='tira' ? cantidad*6 : cantidad;
+    const total    = p ? (tipo==='tira' ? p.precioTira*cantidad : p.precioUnidad*cantidad) : s.total;
+    const ganancia = p ? total - p.costoUnidad*unidades : s.ganancia;
+    s.tipo=tipo; s.cantidad=cantidad; s.unidades=unidades; s.total=total; s.ganancia=ganancia;
+    const {error} = await sb.from('sales').update({tipo,cantidad,unidades,total,ganancia}).eq('id',saleId);
+    if (error) showToast('⚠️ Error actualizando venta');
+  },
+
   async updateSalePago(saleId, pago) {
     const s = _S.find(x=>x.id===saleId);
     if (!s) return;
@@ -567,6 +579,8 @@ async function initSampleIfNeeded() {
 let _cart = [];
 let _fTipo = 'tira';
 let _registering = false;
+let _editSaleId = null;
+let _esTipo = 'tira';
 let _pago = 'Efectivo';
 let _clNav = { view:'districts', distrito:null, clientId:null };
 let _selectedClient = null;
@@ -1337,30 +1351,56 @@ function renderClientDetail() {
     ...abonos.map(a=>({ fecha:a.fecha, tipo:'abono', data:a }))
   ].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
 
-  const histHtml=!histItems.length
-    ?'<div class="empty"><div class="ei">🧾</div><p>Sin historial</p></div>'
-    :'<div class="card"><div class="twrap"><table>'+
-    '<thead><tr><th>Fecha</th><th>Detalle</th><th>Cant.</th><th>Estado</th><th style="text-align:right">Monto</th></tr></thead><tbody>'+
-    histItems.map(item=>{
-      if (item.tipo==='abono') {
-        const a = item.data;
-        return `<tr style="background:var(--OKb)">
-          <td style="font-size:11px;white-space:nowrap">${fmtDT(a.fecha)}</td>
-          <td style="font-size:12px;font-weight:700;color:var(--OK)" colspan="2">💰 Abonó</td>
-          <td><span class="badge b-ok">Abono</span></td>
-          <td style="text-align:right;font-weight:800;color:var(--OK)">${fmt(a.monto)}</td>
-        </tr>`;
-      }
-      const s = item.data;
-      const badge = s.credito&&!s.pagado?'<span class="badge b-er">Fiado</span>':s.credito&&s.pagado?'<span class="badge b-ok">Cobrado</span>':`<span class="badge b-bl">${esc(s.pago)}</span>`;
-      return `<tr>
-        <td style="font-size:11px;white-space:nowrap">${fmtDT(s.fecha)}</td>
-        <td style="font-size:12px">${esc(s.productoNombre)}</td>
-        <td style="font-size:12px">${s.cantidad} ${s.tipo==='tira'?'tira':'ud.'}</td>
-        <td style="white-space:nowrap">${badge} <button onclick="editSalePago('${s.id}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;opacity:.6" title="Editar método de pago">✏️</button></td>
-        <td style="text-align:right;font-weight:800">${fmt(s.total)}</td>
-      </tr>`;
-    }).join('')+'</tbody></table></div></div>';
+  // Agrupar por día (fecha local)
+  const groupedDays = {};
+  histItems.forEach(item => {
+    const day = new Date(item.fecha).toLocaleDateString('en-CA');
+    if (!groupedDays[day]) groupedDays[day] = [];
+    groupedDays[day].push(item);
+  });
+  const sortedDays = Object.keys(groupedDays).sort((a,b)=>b.localeCompare(a));
+
+  const histHtml = !histItems.length
+    ? '<div class="empty"><div class="ei">🧾</div><p>Sin historial</p></div>'
+    : sortedDays.map(day=>{
+        const dayItems  = groupedDays[day];
+        const daySales  = dayItems.filter(i=>i.tipo==='venta').map(i=>i.data);
+        const pagoActual= daySales.length ? daySales[0].pago : null;
+        const dayFmt    = new Date(day+'T12:00:00').toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'});
+        const dayTotal  = daySales.reduce((a,s)=>a+s.total,0);
+
+        const rows = dayItems.map(item=>{
+          if (item.tipo==='abono') {
+            const a=item.data;
+            return `<tr style="background:var(--OKb)">
+              <td colspan="2" style="font-size:12px;font-weight:700;color:var(--OK)">💰 Abono ${fmtDT(a.fecha).split(' ')[1]}</td>
+              <td style="text-align:right;font-weight:800;color:var(--OK)" colspan="2">${fmt(a.monto)}</td>
+            </tr>`;
+          }
+          const s=item.data;
+          return `<tr>
+            <td style="font-size:12px">${esc(s.productoNombre)}</td>
+            <td style="font-size:12px;white-space:nowrap">${s.cantidad} ${s.tipo==='tira'?'tira':'ud.'}</td>
+            <td style="text-align:right;font-weight:800">${fmt(s.total)}</td>
+            <td><button onclick="editSaleItems('${s.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;opacity:.55">✏️</button></td>
+          </tr>`;
+        }).join('');
+
+        const pagoBtn = pagoActual
+          ? `<button onclick="editDayPago('${id}','${day}')" style="background:var(--S2);border:1px solid var(--B);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:var(--T);white-space:nowrap">${pagoActual} ✏️</button>`
+          : '';
+
+        return `<div class="card" style="margin-bottom:10px;padding:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div>
+              <span style="font-size:13px;font-weight:700">${dayFmt}</span>
+              <span style="font-size:12px;color:var(--T2);margin-left:8px">${fmt(dayTotal)}</span>
+            </div>
+            ${pagoBtn}
+          </div>
+          <div class="twrap"><table><tbody>${rows}</tbody></table></div>
+        </div>`;
+      }).join('');
 
   document.getElementById('cl-body').innerHTML = statsHtml+fiadoHtml+'<div class="sh"><h2>Historial</h2></div>'+histHtml;
 }
@@ -1425,30 +1465,88 @@ async function confirmarAbonoTotal(clientId, totalOriginal) {
   renderFiadoAlert();
 }
 
-function editSalePago(saleId) {
-  const s = _S.find(x=>x.id===saleId);
-  if (!s) return;
-  const pagoActual = s.pago;
+function editDayPago(clientId, day) {
+  const daySales = _S.filter(s=>s.clienteId===clientId && new Date(s.fecha).toLocaleDateString('en-CA')===day);
+  if (!daySales.length) return;
+  const pagoActual = daySales[0].pago;
+  const dayFmt = new Date(day+'T12:00:00').toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'});
   const pagos = ['Efectivo','Yape','Plin','Transferencia','Fiado'];
   const btns = pagos.map(p=>`
     <button class="btn ${p===pagoActual?'btn-p':'btn-ghost'}" style="margin-bottom:8px"
-      onclick="confirmEditSalePago('${saleId}','${p}')">
+      onclick="confirmEditDayPago('${clientId}','${day}','${p}')">
       ${p===pagoActual?'✓ ':''} ${p}
     </button>`).join('');
   openModal(`
-    <div class="mhdr"><span class="mtitle">✏️ Editar método de pago</span><button class="mclose" onclick="closeModal()">✕</button></div>
-    <div style="font-size:12px;color:var(--T2);margin-bottom:12px">${esc(s.productoNombre)} · ${fmtD(s.fecha)} · <strong>${fmt(s.total)}</strong></div>
+    <div class="mhdr"><span class="mtitle">💳 Método de pago</span><button class="mclose" onclick="closeModal()">✕</button></div>
+    <div style="font-size:12px;color:var(--T2);margin-bottom:12px">Venta del ${dayFmt} · ${daySales.length} producto(s)</div>
     <div class="fg"><label class="fl">Método actual: <strong>${pagoActual}</strong></label></div>
     ${btns}
   `);
 }
 
-async function confirmEditSalePago(saleId, nuevoPago) {
+async function confirmEditDayPago(clientId, day, nuevoPago) {
   closeModal();
-  await DB.updateSalePago(saleId, nuevoPago);
+  const daySales = _S.filter(s=>s.clienteId===clientId && new Date(s.fecha).toLocaleDateString('en-CA')===day);
+  await Promise.all(daySales.map(s=>DB.updateSalePago(s.id, nuevoPago)));
   showToast(`✅ Método de pago actualizado a <em>${nuevoPago}</em>`);
   renderClientDetail();
   renderFiadoAlert();
+}
+
+function editSaleItems(saleId) {
+  _editSaleId = saleId;
+  const s = _S.find(x=>x.id===saleId);
+  if (!s) return;
+  const unitOnly = isUnitOnly(s.productoNombre);
+  _esTipo = unitOnly ? 'unidad' : s.tipo;
+  const tirDis = unitOnly ? 'disabled style="opacity:.35;cursor:not-allowed"' : '';
+  openModal(`
+    <div class="mhdr"><span class="mtitle">✏️ Editar producto</span><button class="mclose" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:12px">${esc(s.productoNombre)}</div>
+    <div class="fg">
+      <label class="fl">Tipo</label>
+      <div class="type-btns">
+        <button class="type-btn ${_esTipo==='tira'?'active':''}" id="es-tira" onclick="setESTipo('tira')" ${tirDis}>🎯 Tiras (×6)</button>
+        <button class="type-btn ${_esTipo==='unidad'?'active':''}" id="es-unidad" onclick="setESTipo('unidad')">📦 Unidades</button>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="fl">Cantidad</label>
+      <input type="number" id="es-qty" value="${s.cantidad}" min="1" oninput="calcESPreview()">
+    </div>
+    <div id="es-preview" style="font-size:16px;font-weight:800;color:var(--PD);margin-bottom:14px">S/ —</div>
+    <button class="btn btn-p" onclick="confirmEditSaleItems()">✅ Guardar cambios</button>
+  `);
+  calcESPreview();
+}
+
+function setESTipo(t) {
+  _esTipo = t;
+  document.getElementById('es-tira')?.classList.toggle('active', t==='tira');
+  document.getElementById('es-unidad')?.classList.toggle('active', t==='unidad');
+  calcESPreview();
+}
+
+function calcESPreview() {
+  const s = _S.find(x=>x.id===_editSaleId);
+  const p = s ? _P.find(x=>x.id===s.productoId) : null;
+  const qty = parseInt(document.getElementById('es-qty')?.value)||0;
+  const el = document.getElementById('es-preview');
+  if (!el) return;
+  if (!p || qty<=0) { el.textContent='S/ —'; return; }
+  const total = _esTipo==='tira' ? p.precioTira*qty : p.precioUnidad*qty;
+  const unidades = _esTipo==='tira' ? qty*6 : qty;
+  const ganancia = total - p.costoUnidad*unidades;
+  el.textContent = `${fmt(total)} · Ganancia: ${fmt(ganancia)}`;
+}
+
+async function confirmEditSaleItems() {
+  const qty = parseInt(document.getElementById('es-qty')?.value)||0;
+  if (qty<=0) { showToast('⚠️ Ingresa una cantidad válida'); return; }
+  closeModal();
+  await DB.updateSaleItems(_editSaleId, _esTipo, qty);
+  showToast('✅ Venta actualizada');
+  renderClientDetail();
 }
 
 function openAddClientModal(preDistrict) {
